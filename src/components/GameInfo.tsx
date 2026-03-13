@@ -176,45 +176,7 @@ export function GameInfo({
         {message}
       </div>
 
-      {/* Move log */}
-      <div
-        style={{
-          background: 'rgba(0,0,0,0.2)',
-          border: '1px solid rgba(212,160,32,0.1)',
-          borderRadius: 10,
-          padding: '10px 12px',
-          marginTop: 8,
-        }}
-      >
-        <div
-          style={{
-            color: '#7a5025',
-            fontSize: 10,
-            letterSpacing: '0.2em',
-            marginBottom: 6,
-          }}
-        >
-          HISTÓRICO
-        </div>
-        {moveLog.length === 0 ? (
-          <div style={{ color: '#4a3015', fontSize: 11, fontStyle: 'italic' }}>
-            Nenhuma jogada ainda…
-          </div>
-        ) : (
-          moveLog.map((entry, i) => (
-            <div
-              key={i}
-              style={{
-                color: i === 0 ? '#a07030' : '#4a3015',
-                fontSize: 11,
-                marginBottom: 2,
-              }}
-            >
-              {entry}
-            </div>
-          ))
-        )}
-      </div>
+
     </>
   );
 }
