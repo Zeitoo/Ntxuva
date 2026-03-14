@@ -37,7 +37,7 @@ interface RowLabelProps {
 
 function RowLabel({ label, color }: RowLabelProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '3px 0' }}>
+    <div style={{ display: 'none', alignItems: 'center', gap: 8, margin: '3px 0' }}>
       <div
         style={{ flex: 1, height: 1, background: `color-mix(in srgb, ${color} 30%, transparent)` }}
       />
@@ -82,8 +82,8 @@ export function Board({
   const gridStyle: React.CSSProperties = {
     display: 'grid',
     gridTemplateColumns: `repeat(${cols}, 1fr)`,
-    gap,
-    marginBottom: 4,
+    gap: gap + 20,
+    marginBottom: 20,
     minWidth: cols * (minHouse + gap),
   };
 
@@ -119,7 +119,7 @@ export function Board({
           'linear-gradient(180deg, #4a2208 0%, #6a3410 40%, #5a2c0e 70%, #4a2208 100%)',
         borderRadius: 18,
         border: '3px solid #7a4010',
-        padding: '12px 14px',
+        padding: '0px 14px',
         boxShadow:
           '0 10px 50px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,200,80,0.08)',
         overflowX: 'auto',

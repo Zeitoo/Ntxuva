@@ -100,7 +100,7 @@ export function Controls({
   return (
     <div
       style={{
-        marginTop: 12,
+        marginTop: 32,
         display: 'flex',
         flexWrap: 'wrap',
         gap: 12,
@@ -109,7 +109,7 @@ export function Controls({
       }}
     >
       {/* Board size */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex',justifyContent: "center" ,flexDirection: "column" ,alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <span style={labelStyle}>CASAS:</span>
         {COL_OPTIONS.map(([c, label]) => (
           <OptionButton<ColCount>
