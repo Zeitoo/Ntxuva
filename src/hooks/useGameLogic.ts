@@ -1,12 +1,15 @@
 /**
  * NTXUVA – useGameLogic
  *
- * Centralises all game state and orchestrates turns between
- * the human player and the AI opponent.
+ * Manages all game state and orchestrates turns between human and AI.
+ * Sound effects are wired in here so the hook controls the full experience.
  *
- * Usage:
- *   const game = useGameLogic(cols, difficulty);
- *   // use game.board, game.handleHumanMove, etc.
+ * Rule highlights (see gameEngine.ts for full details):
+ *   • The game ends ONLY when a player's piece count reaches 0.
+ *   • A player must start from a house with > 1 piece if any exist on their
+ *     side. Only when ALL their houses have ≤ 1 piece are they free to pick any.
+ *   • "Pick-1" continuation (Phase 1): last piece on non-empty → take 1 back
+ *     and continue distributing.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -26,11 +29,12 @@ import {
   checkGameEnd,
   countPieces,
   doMove,
-  getPhase,
+  getPhaseForPlayer,
   getValidMoves,
   initBoard,
 } from '../utils/gameEngine';
-import { getAIMove } from '../utils/aiEngine'
+import { getAIMove } from '../utils/aiEngine';
+import { useSounds } from './useSounds';
 
 // ─────────────────────────────────────────────
 // Public shape
@@ -42,27 +46,24 @@ export interface GameState {
   capturedByHuman: number;
   capturedByComputer: number;
   status: GameStatus;
-  /** Moves available to the human on their turn. Empty otherwise. */
   validMoves: Move[];
-  /** Houses currently highlighted (selected or AI thinking). */
   highlighted: Position[];
-  /** Houses that were just captured (flash animation). */
   capturedCells: Position[];
-  /** The house where the last piece was placed. */
   lastMoved: Position | null;
   message: string;
-  /** True while a move animation is in progress (blocks input). */
   busy: boolean;
-  /** Last 8 move log entries, newest first. */
   moveLog: string[];
-  phase: 1 | 2;
+  humanPhase: 1 | 2;
+  compPhase: 1 | 2;
   humanPieces: number;
   compPieces: number;
+  soundEnabled: boolean;
 }
 
 export interface GameActions {
   handleHumanMove: (row: number, col: number) => void;
   resetGame: () => void;
+  toggleSound: () => void;
 }
 
 // ─────────────────────────────────────────────
@@ -84,20 +85,22 @@ export function useGameLogic(
   const [message, setMessage] = useState('Sua vez! Escolha uma casa.');
   const [busy, setBusy] = useState(false);
   const [moveLog, setMoveLog] = useState<string[]>([]);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // ── Helpers ───────────────────────────────────────────────────────────
+  const sounds = useSounds(soundEnabled);
+
+  // ── Helpers ─────────────────────────────────────────────────────
 
   const addLog = useCallback((text: string) => {
-    setMoveLog((prev) => [text, ...prev].slice(0, 8));
+    setMoveLog((prev) => [text, ...prev].slice(0, 10));
   }, []);
 
   const rowLabel = (player: Player, row: number): string => {
-    const { inner } = PLAYER_ROWS[player];
-    return row === inner ? 'ataque' : 'defesa';
+    return row === PLAYER_ROWS[player].inner ? 'ataque' : 'defesa';
   };
 
   /**
-   * Apply a MoveResult to state and check for game-over.
+   * Apply a MoveResult to state, play the appropriate sound, and check game-over.
    * Returns true if the game ended.
    */
   const applyResult = useCallback(
@@ -108,6 +111,7 @@ export function useGameLogic(
       if (result.captured > 0) {
         const s = result.captured > 1 ? 's' : '';
         setCapturedCells(result.capturedPositions as Position[]);
+        sounds.playCapture();
 
         if (player === 1) {
           setCapturedByHuman((v) => v + result.captured);
@@ -120,6 +124,7 @@ export function useGameLogic(
         }
       } else {
         setCapturedCells([]);
+        sounds.playPlace();
         setMessage(player === 1 ? 'Movimento realizado.' : 'Computador jogou.');
       }
 
@@ -128,9 +133,11 @@ export function useGameLogic(
         if (end.winner === 1) {
           setStatus('won');
           setMessage('🏆 Você ganhou! Parabéns!');
+          sounds.playWin();
         } else if (end.winner === 0) {
           setStatus('lost');
           setMessage('💀 Computador venceu!');
+          sounds.playLose();
         } else {
           setStatus('tie');
           setMessage('🤝 Empate!');
@@ -141,10 +148,10 @@ export function useGameLogic(
       }
       return false;
     },
-    [addLog],
+    [sounds, addLog],
   );
 
-  // ── Human move ────────────────────────────────────────────────────────
+  // ── Human move ───────────────────────────────────────────────────
 
   const handleHumanMove = useCallback(
     (row: number, col: number) => {
@@ -153,16 +160,15 @@ export function useGameLogic(
       const valid = getValidMoves(board, 1);
       if (!valid.some((m) => m.row === row && m.col === col)) return;
 
+      sounds.playSelect();
       setBusy(true);
       setHighlighted([[row, col]]);
       setCapturedCells([]);
-      addLog(`🟡 Jogou: ${rowLabel(1, row)} col ${col + 1}`);
+      addLog(`🟡 ${rowLabel(1, row)} col ${col + 1}`);
 
-      // Small delay so the highlight is visible before executing
       setTimeout(() => {
         const result = doMove(board, 1, row, col);
         const ended = applyResult(result, 1);
-
         if (!ended) {
           setTurn(0);
           setMessage('Computador pensando…');
@@ -172,12 +178,12 @@ export function useGameLogic(
             setBusy(false);
           }, 400);
         }
-      }, 350);
+      }, 300);
     },
-    [busy, turn, status, board, applyResult, addLog],
+    [busy, turn, status, board, sounds, applyResult, addLog],
   );
 
-  // ── AI move (triggered reactively when it's the computer's turn) ──────
+  // ── AI move (reactive) ───────────────────────────────────────────
 
   useEffect(() => {
     if (turn !== 0 || status !== 'playing' || busy) return;
@@ -185,10 +191,10 @@ export function useGameLogic(
     const thinkTime = difficulty === 'hard' ? 1100 : 800;
 
     const timer = window.setTimeout(() => {
-      const aiMove = getAIMove(board, difficulty);
+      sounds.playAIThink();
 
+      const aiMove = getAIMove(board, difficulty);
       if (!aiMove) {
-        // Computer has no valid moves – human wins
         setTurn(1);
         setMessage('Computador sem movimentos. Sua vez!');
         return;
@@ -196,12 +202,11 @@ export function useGameLogic(
 
       setBusy(true);
       setHighlighted([[aiMove.row, aiMove.col]]);
-      addLog(`🔴 Comp.: ${rowLabel(0, aiMove.row)} col ${aiMove.col + 1}`);
+      addLog(`🔴 ${rowLabel(0, aiMove.row)} col ${aiMove.col + 1}`);
 
       setTimeout(() => {
         const result = doMove(board, 0, aiMove.row, aiMove.col);
         const ended = applyResult(result, 0);
-
         if (!ended) {
           setTimeout(() => {
             setTurn(1);
@@ -209,15 +214,15 @@ export function useGameLogic(
             setHighlighted([]);
             setCapturedCells([]);
             setBusy(false);
-          }, 550);
+          }, 500);
         }
       }, 350);
     }, thinkTime);
 
     return () => window.clearTimeout(timer);
-  }, [turn, status, board, difficulty, busy, applyResult, addLog]);
+  }, [turn, status, board, difficulty, busy, sounds, applyResult, addLog]);
 
-  // ── Reset ──────────────────────────────────────────────────────────────
+  // ── Reset ────────────────────────────────────────────────────────
 
   const resetGame = useCallback(() => {
     setBoard(initBoard(cols));
@@ -233,13 +238,9 @@ export function useGameLogic(
     setMoveLog([]);
   }, [cols]);
 
-  // ── Derived values ─────────────────────────────────────────────────────
+  const toggleSound = useCallback(() => setSoundEnabled((v) => !v), []);
 
-  const validMoves =
-    status === 'playing' && turn === 1 ? getValidMoves(board, 1) : [];
-  const phase = getPhase(board);
-  const humanPieces = countPieces(board, 1);
-  const compPieces = countPieces(board, 0);
+  // ── Derived values ────────────────────────────────────────────────
 
   return {
     board,
@@ -247,17 +248,20 @@ export function useGameLogic(
     capturedByHuman,
     capturedByComputer,
     status,
-    validMoves,
+    validMoves: status === 'playing' && turn === 1 ? getValidMoves(board, 1) : [],
     highlighted,
     capturedCells,
     lastMoved,
     message,
     busy,
     moveLog,
-    phase,
-    humanPieces,
-    compPieces,
+    humanPhase: getPhaseForPlayer(board, 1),
+    compPhase: getPhaseForPlayer(board, 0),
+    humanPieces: countPieces(board, 1),
+    compPieces: countPieces(board, 0),
+    soundEnabled,
     handleHumanMove,
     resetGame,
+    toggleSound,
   };
 }

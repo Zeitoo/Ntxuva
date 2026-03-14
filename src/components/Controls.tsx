@@ -1,8 +1,6 @@
 /**
  * NTXUVA – Controls component
- *
- * Renders the board-size selector, difficulty selector, and reset button.
- * Designed to be generic: OptionButton is reusable for any string/number enum.
+ * Board-size selector, difficulty selector, sound toggle, and reset button.
  */
 
 import type { CSSProperties } from 'react';
@@ -26,17 +24,12 @@ function OptionButton<T extends string | number>({
   onChange,
 }: OptionButtonProps<T>) {
   const active = value === current;
-
   const style: CSSProperties = {
-    background: active
-      ? 'rgba(212,160,32,0.22)'
-      : 'rgba(212,160,32,0.06)',
-    border: `1px solid ${
-      active ? 'rgba(212,160,32,0.7)' : 'rgba(212,160,32,0.2)'
-    }`,
+    background: active ? 'rgba(212,160,32,0.22)' : 'rgba(212,160,32,0.06)',
+    border: `1px solid ${active ? 'rgba(212,160,32,0.7)' : 'rgba(212,160,32,0.2)'}`,
     borderRadius: 6,
     color: active ? '#d4a020' : '#7a5025',
-    padding: '6px 12px',
+    padding: '5px 11px',
     fontSize: 11,
     cursor: 'pointer',
     letterSpacing: '0.08em',
@@ -44,7 +37,6 @@ function OptionButton<T extends string | number>({
     transition: 'all 0.2s',
     fontFamily: 'inherit',
   };
-
   return (
     <button style={style} onClick={() => onChange(value)}>
       {label}
@@ -59,36 +51,51 @@ function OptionButton<T extends string | number>({
 interface ControlsProps {
   difficulty: Difficulty;
   cols: ColCount;
+  soundEnabled: boolean;
   onDifficultyChange: (d: Difficulty) => void;
   onColsChange: (c: ColCount) => void;
   onReset: () => void;
+  onToggleSound: () => void;
 }
 
 const DIFFICULTIES: ReadonlyArray<[Difficulty, string]> = [
-  ['easy', 'Fácil'],
+  ['easy',   'Fácil'],
   ['medium', 'Médio'],
-  ['hard', 'Difícil'],
+  ['hard',   'Difícil'],
 ];
 
 const COL_OPTIONS: ReadonlyArray<[ColCount, string]> = [
-  [7, '7'],
+  [7,  '7'],
   [16, '16'],
   [22, '22'],
 ];
 
-const sectionLabel: CSSProperties = {
+const labelStyle: CSSProperties = {
   color: '#7a5025',
   fontSize: 11,
   letterSpacing: '0.1em',
   flexShrink: 0,
 };
 
+const btnBase: CSSProperties = {
+  borderRadius: 8,
+  padding: '6px 14px',
+  fontSize: 11,
+  cursor: 'pointer',
+  letterSpacing: '0.1em',
+  fontWeight: 'bold',
+  transition: 'all 0.2s',
+  fontFamily: 'inherit',
+};
+
 export function Controls({
   difficulty,
   cols,
+  soundEnabled,
   onDifficultyChange,
   onColsChange,
   onReset,
+  onToggleSound,
 }: ControlsProps) {
   return (
     <div
@@ -102,10 +109,8 @@ export function Controls({
       }}
     >
       {/* Board size */}
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
-      >
-        <span style={sectionLabel}>CASAS:</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={labelStyle}>CASAS:</span>
         {COL_OPTIONS.map(([c, label]) => (
           <OptionButton<ColCount>
             key={c}
@@ -118,10 +123,8 @@ export function Controls({
       </div>
 
       {/* Difficulty */}
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}
-      >
-        <span style={sectionLabel}>IA:</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span style={labelStyle}>IA:</span>
         {DIFFICULTIES.map(([d, label]) => (
           <OptionButton<Difficulty>
             key={d}
@@ -133,25 +136,39 @@ export function Controls({
         ))}
       </div>
 
-      {/* Reset */}
-      <button
-        onClick={onReset}
-        style={{
-          background: 'rgba(212,160,32,0.1)',
-          border: '1px solid rgba(212,160,32,0.3)',
-          borderRadius: 8,
-          color: '#d4a020',
-          padding: '7px 18px',
-          fontSize: 12,
-          cursor: 'pointer',
-          letterSpacing: '0.12em',
-          fontWeight: 'bold',
-          transition: 'all 0.2s',
-          fontFamily: 'inherit',
-        }}
-      >
-        ↺ REINICIAR
-      </button>
+      {/* Sound + Reset */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Sound toggle */}
+        <button
+          onClick={onToggleSound}
+          title={soundEnabled ? 'Desligar som' : 'Ligar som'}
+          style={{
+            ...btnBase,
+            background: soundEnabled
+              ? 'rgba(212,160,32,0.14)'
+              : 'rgba(212,160,32,0.05)',
+            border: `1px solid ${soundEnabled ? 'rgba(212,160,32,0.5)' : 'rgba(212,160,32,0.2)'}`,
+            color: soundEnabled ? '#d4a020' : '#5a4015',
+            padding: '6px 10px',
+            fontSize: 15,
+          }}
+        >
+          {soundEnabled ? '🔊' : '🔇'}
+        </button>
+
+        {/* Reset */}
+        <button
+          onClick={onReset}
+          style={{
+            ...btnBase,
+            background: 'rgba(212,160,32,0.1)',
+            border: '1px solid rgba(212,160,32,0.3)',
+            color: '#d4a020',
+          }}
+        >
+          ↺ REINICIAR
+        </button>
+      </div>
     </div>
   );
 }

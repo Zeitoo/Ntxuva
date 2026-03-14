@@ -1,9 +1,42 @@
 /**
  * NTXUVA – GameInfo component
- * Scoreboard, status message, and move log.
+ * Scoreboard (with per-player phase badges), status message, and move log.
  */
 
 import type { GameStatus, Player } from '../types/GameTypes';
+
+interface PhaseBadgeProps {
+  phase: 1 | 2;
+  isHuman: boolean;
+}
+
+function PhaseBadge({ phase, isHuman }: PhaseBadgeProps) {
+  const color = isHuman ? '#d4a020' : '#e05030';
+  const label = phase === 1 ? 'FASE 1' : 'FASE 2';
+  const tip   = phase === 1
+    ? 'Obrigatório jogar de casa com >1 peça'
+    : 'Livre para jogar de qualquer casa com peça';
+
+  return (
+    <div
+      title={tip}
+      style={{
+        display: 'inline-block',
+        background: `rgba(${isHuman ? '212,160,32' : '224,80,40'},0.12)`,
+        border: `1px solid rgba(${isHuman ? '212,160,32' : '224,80,40'},0.35)`,
+        borderRadius: 10,
+        padding: '2px 8px',
+        fontSize: 9,
+        fontWeight: 'bold',
+        color,
+        letterSpacing: '0.15em',
+        cursor: 'help',
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 interface GameInfoProps {
   turn: Player;
@@ -13,7 +46,8 @@ interface GameInfoProps {
   compPieces: number;
   capturedByHuman: number;
   capturedByComputer: number;
-  phase: 1 | 2;
+  humanPhase: 1 | 2;
+  compPhase: 1 | 2;
   moveLog: string[];
 }
 
@@ -25,12 +59,13 @@ export function GameInfo({
   compPieces,
   capturedByHuman,
   capturedByComputer,
-  phase,
+  humanPhase,
+  compPhase,
   moveLog,
 }: GameInfoProps) {
   return (
     <>
-      {/* Scoreboard */}
+      {/* ── Scoreboard ───────────────────────────────────── */}
       <div
         style={{
           display: 'grid',
@@ -49,64 +84,44 @@ export function GameInfo({
             padding: '10px 14px',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 2,
-            }}
-          >
-            <span style={{ fontSize: 16 }}>🤖</span>
-            <span
-              style={{
-                color: '#e05030',
-                fontSize: 12,
-                fontWeight: 'bold',
-                letterSpacing: '0.05em',
-              }}
-            >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span style={{ fontSize: 15 }}>🤖</span>
+            <span style={{ color: '#e05030', fontSize: 12, fontWeight: 'bold', letterSpacing: '0.05em' }}>
               COMPUTADOR
             </span>
           </div>
-          <div style={{ color: '#a04020', fontSize: 11 }}>
+          <PhaseBadge phase={compPhase} isHuman={false} />
+          <div style={{ color: '#a04020', fontSize: 11, marginTop: 4 }}>
             {compPieces} peças &nbsp;·&nbsp; {capturedByComputer} cap.
           </div>
         </div>
 
-        {/* Phase + turn indicator */}
-        <div style={{ textAlign: 'center' }}>
+        {/* Centre: turn indicator */}
+        <div style={{ textAlign: 'center', padding: '0 4px' }}>
           <div
             style={{
-              background: 'rgba(212,160,32,0.12)',
-              border: '1px solid rgba(212,160,32,0.25)',
-              borderRadius: 20,
-              padding: '4px 12px',
-              marginBottom: 6,
-              color: '#d4a020',
-              fontSize: 10,
-              fontWeight: 'bold',
-              letterSpacing: '0.15em',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            FASE {phase}
-          </div>
-          <div
-            style={{
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               borderRadius: '50%',
               margin: '0 auto',
               background: turn === 1 ? '#f0c040' : '#e06040',
-              boxShadow: `0 0 10px ${
-                turn === 1
-                  ? 'rgba(240,192,64,0.8)'
-                  : 'rgba(224,96,64,0.8)'
+              boxShadow: `0 0 12px ${
+                turn === 1 ? 'rgba(240,192,64,0.9)' : 'rgba(224,96,64,0.9)'
               }`,
               transition: 'all 0.3s',
             }}
           />
+          <div
+            style={{
+              marginTop: 5,
+              fontSize: 8,
+              color: 'rgba(212,160,32,0.4)',
+              letterSpacing: '0.15em',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {turn === 1 ? 'SEU TURNO' : 'DELE'}
+          </div>
         </div>
 
         {/* Human */}
@@ -125,47 +140,38 @@ export function GameInfo({
               alignItems: 'center',
               justifyContent: 'flex-end',
               gap: 6,
-              marginBottom: 2,
+              marginBottom: 4,
             }}
           >
-            <span
-              style={{
-                color: '#d4a020',
-                fontSize: 12,
-                fontWeight: 'bold',
-                letterSpacing: '0.05em',
-              }}
-            >
+            <span style={{ color: '#d4a020', fontSize: 12, fontWeight: 'bold', letterSpacing: '0.05em' }}>
               VOCÊ
             </span>
-            <span style={{ fontSize: 16 }}>👤</span>
+            <span style={{ fontSize: 15 }}>👤</span>
           </div>
-          <div style={{ color: '#a07030', fontSize: 11 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <PhaseBadge phase={humanPhase} isHuman={true} />
+          </div>
+          <div style={{ color: '#a07030', fontSize: 11, marginTop: 4 }}>
             {humanPieces} peças &nbsp;·&nbsp; {capturedByHuman} cap.
           </div>
         </div>
       </div>
 
-      {/* Status message */}
+      {/* ── Status message ───────────────────────────────── */}
       <div
         style={{
           textAlign: 'center',
           padding: '11px 16px',
           margin: '10px 0',
           background:
-            status !== 'playing'
-              ? 'rgba(212,160,32,0.15)'
-              : 'rgba(212,160,32,0.07)',
+            status !== 'playing' ? 'rgba(212,160,32,0.15)' : 'rgba(212,160,32,0.07)',
           border: `1px solid ${
-            status !== 'playing'
-              ? 'rgba(212,160,32,0.45)'
-              : 'rgba(212,160,32,0.18)'
+            status !== 'playing' ? 'rgba(212,160,32,0.45)' : 'rgba(212,160,32,0.18)'
           }`,
           borderRadius: 10,
           color: '#d4a020',
           fontSize: status !== 'playing' ? 17 : 13,
           fontWeight: status !== 'playing' ? 'bold' : 'normal',
-          letterSpacing: '0.04em',
           minHeight: 42,
           display: 'flex',
           alignItems: 'center',
@@ -176,25 +182,17 @@ export function GameInfo({
         {message}
       </div>
 
-      {/* Move log */}
+      {/* ── Move log ─────────────────────────────────────── */}
       <div
         style={{
-          display: "none",
           background: 'rgba(0,0,0,0.2)',
           border: '1px solid rgba(212,160,32,0.1)',
           borderRadius: 10,
-          padding: '10px 12px',
+          padding: '8px 12px',
           marginTop: 8,
         }}
       >
-        <div
-          style={{
-            color: '#7a5025',
-            fontSize: 10,
-            letterSpacing: '0.2em',
-            marginBottom: 6,
-          }}
-        >
+        <div style={{ color: '#7a5025', fontSize: 10, letterSpacing: '0.2em', marginBottom: 5 }}>
           HISTÓRICO
         </div>
         {moveLog.length === 0 ? (
@@ -205,11 +203,7 @@ export function GameInfo({
           moveLog.map((entry, i) => (
             <div
               key={i}
-              style={{
-                color: i === 0 ? '#a07030' : '#4a3015',
-                fontSize: 11,
-                marginBottom: 2,
-              }}
+              style={{ color: i === 0 ? '#a07030' : '#4a3015', fontSize: 11, marginBottom: 2 }}
             >
               {entry}
             </div>
