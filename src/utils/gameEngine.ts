@@ -1,31 +1,74 @@
 /**
  * NTXUVA – Game Engine  (pure functions, no React)
  *
- * Key rules implemented here:
+ * ═══════════════════════════════════════════════════════════════
+ * PHASE RULES (per-player, independent)
+ * ═══════════════════════════════════════════════════════════════
  *
- * 1. Phase is PER-PLAYER.
- *    getPhaseForPlayer(board, player):
- *      Phase 1 → player has ≥ 1 house with > 1 piece.  Must pick > 1 house.
- *      Phase 2 → player has NO house with > 1 piece.   Free to pick any ≥ 1 house.
+ * getPhaseForPlayer(board, player):
+ *   Phase 1 → player has ≥ 1 house with > 1 piece.
+ *             MUST start the move from a house with > 1 piece.
+ *   Phase 2 → ALL of the player's houses have ≤ 1 piece.
+ *             FREE to start from any house with ≥ 1 piece.
  *
- * 2. Continuation (Phase 1 only) – "pick 1" rule.
- *    When the last placed piece lands on a NON-EMPTY house:
- *      – Take exactly ONE piece from that house (house count decreases by 1).
- *      – Continue distributing with that 1 piece.
- *    When the last placed piece lands on an EMPTY house → stop, check capture.
+ * ═══════════════════════════════════════════════════════════════
+ * MOVE RULES (doMove)
+ * ═══════════════════════════════════════════════════════════════
  *
- *    Example verified against the manual:
- *      inner row: [0,0,0,1,0,2,0,0]
- *      Pick col5 (2). Distribute left:
- *        col4 ← 1 (was 0).  col3 ← 1 (was 1 → now 2 → pick 1 → 1).  col2 ← 1 (was 0). STOP.
- *      Result: [0,0,1,1,1,0,0,0]  ✓
+ * PHASE 1 move  ("pick-all + pick-1 continuation"):
+ *   1. Pick ALL pieces from the chosen house (house → 0). Carry N pieces.
+ *   2. Distribute 1 piece per house anti-clockwise.
+ *   3a. Last piece lands on EMPTY house (prevCount = 0):
+ *       → STOP.  Run capture check.
+ *   3b. Last piece lands on NON-EMPTY house (prevCount ≥ 1):
+ *       → Pick-1: house retains prevCount (undo the +1), carry 1.
+ *       → Continue distributing.  Repeat from step 2.
  *
- * 3. Phase 2 distribution.
- *    Pick 1 piece, move it exactly 1 step anti-clockwise. No continuation.
+ * PHASE 2 move  ("1-step + conditional Phase-1 continuation"):
+ *   1. Pick 1 piece from chosen 1-piece house (house: 1 → 0). Carry 1.
+ *   2. Move exactly 1 step anti-clockwise.
+ *   3a. Destination was EMPTY (prevCount = 0):
+ *       → STOP.  Run capture check.
+ *       "A move always ends when we create a 1-piece house."
+ *   3b. Destination had EXACTLY 1 piece (prevCount = 1):
+ *       → Destination is now 2. Pick ALL 2 (house → 0). Carry 2.
+ *       → Switch to Phase-1 pick-1 mode and continue.
+ *       Rationale: the 1-step action created a 2-piece house, which
+ *       immediately triggers the Phase-1 distribution rule within the
+ *       SAME move (verified by the manual examples below).
  *
- * 4. Game end.
- *    Over ONLY when a player's total piece count is 0.
- *    Never ends solely because of no valid moves.
+ * Verified examples (inner/attack row only shown; human moves LEFT):
+ *
+ *   Phase 2 example 1  [0,0,0,0,0,1,1] ──single move──► [0,0,0,1,1,0,0]
+ *     col6(1)→col5(1→2) ──pick-ALL 2──► col4(+1) col3(empty) STOP
+ *     Intermediate: [0,0,0,0,0,2,0] (after 1st step, before pick-ALL)
+ *
+ *   Phase 2 example 2  [0,0,0,0,1,1,1] ──single move──► [0,0,0,1,2,0,0]
+ *     col6→col5(1→2) pick-ALL 2 → col4(1+1=2 not-last) col3(empty) STOP
+ *     Intermediate: [0,0,0,0,1,2,0]
+ *
+ *   Phase 2 example 3  [0,0,0,1,0,1,1,0] ──single move──► [0,0,1,1,1,0,0,0]
+ *     col6→col5(1→2) pick-ALL 2 → col4(+1) col3(1→2 pick-1 → 1) col2(empty) STOP
+ *     Intermediates: [0,0,0,1,0,2,0,0]  →  [0,0,0,2,1,0,0,0]
+ *
+ *   Phase 1 example    [0,0,0,1,0,2,0,0] ──single move──► [0,0,1,1,1,0,0,0]
+ *     col5(2) pick-all 2 → col4(+1) col3(1→2 pick-1 → 1) col2(empty) STOP
+ *
+ * ═══════════════════════════════════════════════════════════════
+ * GAME END (checkGameEnd)
+ * ═══════════════════════════════════════════════════════════════
+ *   The game ends ONLY when a player's total piece count reaches 0.
+ *   "No valid moves" is NOT a termination condition.
+ *
+ * ═══════════════════════════════════════════════════════════════
+ * CAPTURE RULES  (§3.1 / §3.2a / §3.2b / §3.3 of the manual)
+ * ═══════════════════════════════════════════════════════════════
+ *   Only fires when the LAST piece lands on an EMPTY house on the
+ *   player's ATTACK (inner) row.
+ *   §3.1  Last piece in own defense row             → no capture.
+ *   §3.2a Opponent's attack row at same col > 0     → capture it.
+ *   §3.2b …and opponent's defense row > 0           → also capture it.
+ *   §3.3  Opponent's attack row = 0                 → no capture.
  */
 
 import type {
@@ -51,11 +94,6 @@ export function initBoard(cols: ColCount): Board {
 // Per-player phase
 // ─────────────────────────────────────────────
 
-/**
- * Returns the phase for a specific player.
- *   1 → player has at least one house with > 1 piece (must pick > 1 house)
- *   2 → all of the player's houses have ≤ 1 piece   (free to pick any ≥ 1 house)
- */
 export function getPhaseForPlayer(board: Board, player: Player): 1 | 2 {
   const { inner, outer } = PLAYER_ROWS[player];
   const cols = board[0].length;
@@ -71,25 +109,11 @@ export function getPhaseForPlayer(board: Board, player: Player): 1 | 2 {
 // Anti-clockwise movement
 // ─────────────────────────────────────────────
 
-/**
- * Human circuit (rows 0–1):
- *   row 1 (inner/attack) → moves LEFT  (col--)
- *   at col 0 wraps to row 0 col 0
- *   row 0 (outer/defense) → moves RIGHT (col++)
- *   at last col wraps to row 1 last col
- */
 function humanNextPos(row: number, col: number, cols: number): Position {
   if (row === 1) return col > 0 ? [1, col - 1] : [0, 0];
   return col < cols - 1 ? [0, col + 1] : [1, cols - 1];
 }
 
-/**
- * Computer circuit (rows 2–3):
- *   row 2 (inner/attack) → moves RIGHT (col++)
- *   at last col wraps to row 3 last col
- *   row 3 (outer/defense) → moves LEFT  (col--)
- *   at col 0 wraps to row 2 col 0
- */
 function computerNextPos(row: number, col: number, cols: number): Position {
   if (row === 2) return col < cols - 1 ? [2, col + 1] : [3, cols - 1];
   return col > 0 ? [3, col - 1] : [2, 0];
@@ -105,12 +129,6 @@ function getNextPos(row: number, col: number, player: Player, cols: number): Pos
 // Valid-move enumeration
 // ─────────────────────────────────────────────
 
-/**
- * Returns all valid starting houses for `player` on the current board.
- *
- *  Phase 1 → only houses with > 1 piece on the player's rows.
- *  Phase 2 → any house with ≥ 1 piece on the player's rows.
- */
 export function getValidMoves(board: Board, player: Player): Move[] {
   const phase = getPhaseForPlayer(board, player);
   const { inner, outer } = PLAYER_ROWS[player];
@@ -131,29 +149,6 @@ export function getValidMoves(board: Board, player: Player): Move[] {
 // Move execution
 // ─────────────────────────────────────────────
 
-/**
- * Execute a move and return the new board state plus capture information.
- *
- * Phase 1  ("pick 1" continuation):
- *   1. Pick ALL pieces from the starting house (house → 0).
- *   2. Distribute 1 piece per house anti-clockwise.
- *   3. When the last piece lands on a NON-EMPTY house (prevCount > 0):
- *        – Decrement that house by 1 (pick 1 piece back up).
- *        – Set pieces = 1 and continue from step 2.
- *   4. When the last piece lands on an EMPTY house (prevCount === 0):
- *        – Stop distribution.
- *        – Run capture check.
- *
- * Phase 2  (single-step free move):
- *   1. Remove 1 piece from the chosen house.
- *   2. Add it to the very next house in anti-clockwise order.
- *   3. No continuation.
- *   4. Run capture check on the destination.
- *
- * The circuit path guarantees termination: the original starting house
- * was set to 0 (Phase 1) or decremented (Phase 2), so the path will
- * eventually encounter an empty house.
- */
 export function doMove(
   board: Board,
   player: Player,
@@ -169,48 +164,66 @@ export function doMove(
   let finalRow = startRow;
   let finalCol = startCol;
 
-  if (phase === 2) {
-    // ── Phase 2: single 1-step move ──────────────────────────────────────
-    nb[startRow][startCol]--;                         // remove 1 piece
-    const [nr, nc] = getNextPos(startRow, startCol, player, cols);
-    const prevDest = nb[nr][nc];
-    nb[nr][nc]++;
-    finalRow = nr;
-    finalCol = nc;
+  // ── Initial pick-up ──────────────────────────────────────────────────
+  let pieces: number;
+  let currRow = startRow;
+  let currCol = startCol;
 
-    if (prevDest === 0) {
-      resolveCapture(nb, player, nr, nc, capturedPositions, (n) => { captured += n; });
-    }
-  } else {
-    // ── Phase 1: pick-all distribute with "pick-1" continuation ──────────
-    let pieces = nb[startRow][startCol];
+  if (phase === 1) {
+    // Phase 1: pick ALL pieces from the starting house.
+    pieces = nb[startRow][startCol];
     nb[startRow][startCol] = 0;
-    let currRow = startRow;
-    let currCol = startCol;
+  } else {
+    // Phase 2: pick exactly 1 piece from the starting 1-piece house.
+    pieces = 1;
+    nb[startRow][startCol]--; // 1 → 0
+  }
 
-    while (pieces > 0) {
-      const [nr, nc] = getNextPos(currRow, currCol, player, cols);
-      currRow = nr;
-      currCol = nc;
+  // ── Continuation-mode flag ───────────────────────────────────────────
+  // Starts false for Phase-2 moves; true for Phase-1 moves.
+  // After the Phase-2 first-step lands on a 1-piece house, we pick-ALL
+  // (2 pieces) and switch to Phase-1 pick-1 mode for the rest of the move.
+  let usePickOne = (phase === 1);
 
-      const prevCount = nb[currRow][currCol];
-      nb[currRow][currCol]++;
-      pieces--;
+  // ── Distribution loop ────────────────────────────────────────────────
+  while (pieces > 0) {
+    const [nr, nc] = getNextPos(currRow, currCol, player, cols);
+    currRow = nr;
+    currCol = nc;
 
-      if (pieces === 0) {
-        finalRow = currRow;
-        finalCol = currCol;
+    const prevCount = nb[currRow][currCol];
+    nb[currRow][currCol]++;
+    pieces--;
 
-        if (prevCount === 0) {
-          // Landed on empty house → stop & check capture
-          resolveCapture(nb, player, currRow, currCol, capturedPositions, (n) => {
-            captured += n;
-          });
-        } else {
-          // Landed on non-empty house → pick exactly 1 piece and continue
-          nb[currRow][currCol]--;   // take 1 back (house retains prevCount)
-          pieces = 1;
-        }
+    // Only act when this was the LAST piece in hand.
+    if (pieces === 0) {
+      finalRow = currRow;
+      finalCol = currCol;
+
+      if (prevCount === 0) {
+        // ── Landed on EMPTY house ────────────────────────────────────
+        // "A move always terminates when we create a 1-piece house."
+        // → STOP.  Run capture check.
+        resolveCapture(nb, player, currRow, currCol, capturedPositions, (n) => {
+          captured += n;
+        });
+        // while loop exits naturally (pieces === 0 and not re-set).
+
+      } else if (!usePickOne) {
+        // ── Phase-2 first step landed on a NON-EMPTY house ──────────
+        // prevCount ≥ 1.  In Phase-2 the player's entire circuit has
+        // ≤ 1 piece per house, so prevCount can only equal 1 here.
+        // The destination now holds 2 pieces; pick ALL and continue in
+        // Phase-1 pick-1 mode.
+        pieces = nb[currRow][currCol]; // = prevCount + 1  (= 2)
+        nb[currRow][currCol] = 0;
+        usePickOne = true;             // switch to Phase-1 pick-1 mode
+
+      } else {
+        // ── Phase-1 (or promoted Phase-2) pick-1 continuation ───────
+        // Undo the +1: house stays at prevCount.  Carry 1 piece.
+        nb[currRow][currCol]--; // prevCount + 1 → prevCount
+        pieces = 1;
       }
     }
   }
@@ -219,19 +232,9 @@ export function doMove(
 }
 
 // ─────────────────────────────────────────────
-// Capture resolution
+// Capture resolution  (§3.1 / §3.2a / §3.2b / §3.3)
 // ─────────────────────────────────────────────
 
-/**
- * Applies capture rules §3.1 / §3.2a / §3.2b / §3.3 (manual).
- * Mutates `nb` in place.
- *
- * §3.1  Last piece in defense row          → no capture (strategic move).
- * §3.2a Last piece in empty inner-attack,
- *        opponent inner row > 0            → capture inner row.
- * §3.2b … and opponent outer row > 0       → also capture outer row.
- * §3.3  Opponent inner row = 0             → no capture (inoffensive attack).
- */
 function resolveCapture(
   nb: Board,
   player: Player,
@@ -241,21 +244,21 @@ function resolveCapture(
   addCaptured: (n: number) => void,
 ): void {
   const { inner: innerAttack } = PLAYER_ROWS[player];
-  if (row !== innerAttack) return;   // §3.1
+  if (row !== innerAttack) return; // §3.1 – defensive move
 
   const oppPlayer = (1 - player) as Player;
   const { inner: oppInner, outer: oppOuter } = PLAYER_ROWS[oppPlayer];
   const oppInnerCount = nb[oppInner][col];
   const oppOuterCount = nb[oppOuter][col];
 
-  if (oppInnerCount === 0) return;   // §3.3
+  if (oppInnerCount === 0) return; // §3.3 – inoffensive attack
 
-  // §3.2a
+  // §3.2a – capture opponent's attack row
   addCaptured(oppInnerCount);
   capturedPositions.push([oppInner, col]);
   nb[oppInner][col] = 0;
 
-  // §3.2b
+  // §3.2b – also capture opponent's defense row if non-empty
   if (oppOuterCount > 0) {
     addCaptured(oppOuterCount);
     capturedPositions.push([oppOuter, col]);
@@ -277,8 +280,7 @@ export function countPieces(board: Board, player: Player): number {
 
 /**
  * The game ends ONLY when a player's total piece count reaches 0.
- * (No end triggered by "no valid moves" — if a player has pieces they
- *  always have at least one valid house to play.)
+ * "No valid moves" does NOT end the game.
  */
 export function checkGameEnd(board: Board): GameEndResult {
   const h = countPieces(board, 1);
